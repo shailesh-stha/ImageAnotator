@@ -17,7 +17,7 @@ export class CanvasRenderer {
         const image = this.getImage();
         if (!image) return;
 
-        const { scale, panX, panY, selectedBoxId, hoveredBoxId, selectionRect, drawingRect, currentPath, previewPoint, tooltip } = this.getState();
+        const { scale, panX, panY, selectedBoxIds, hoveredBoxId, selectionRect, drawingRect, currentPath, previewPoint, tooltip } = this.getState();
         const boxes = this.getBoxes();
         const ctx = this.ctx;
 
@@ -42,8 +42,8 @@ export class CanvasRenderer {
         const hoveredBox = boxes.find(b => b.id === hoveredBoxId);
         if (hoveredBox) this._drawHighlight(ctx, hoveredBox, scale);
 
-        const selectedBox = boxes.find(b => b.id === selectedBoxId);
-        if (selectedBox) this._drawSelectionHandles(ctx, selectedBox, scale);
+        const selectedBoxes = boxes.filter(b => selectedBoxIds.includes(b.id));
+        selectedBoxes.forEach(box => this._drawSelectionHandles(ctx, box, scale));
 
         if (selectionRect) this._drawSelectionRectangle(ctx, selectionRect, scale);
         if (drawingRect) this._drawDrawingPreview(ctx, drawingRect, scale);

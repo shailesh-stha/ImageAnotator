@@ -80,6 +80,13 @@
                 <h3 class="mt-2 text-sm font-medium text-gray-900">Upload an Image</h3>
                 <p class="mt-1 text-sm text-gray-500">Click or drag & drop a file.</p>
             </div>
+            <div id="loadingIndicator" class="absolute text-center text-gray-500 pointer-events-none hidden">
+                <svg class="animate-spin mx-auto h-12 w-12 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <h3 class="mt-2 text-sm font-medium text-gray-900">Loading Image...</h3>
+            </div>
              <div id="canvasControls" class="absolute bottom-4 right-4 z-10 flex items-center space-x-2 bg-white bg-opacity-75 backdrop-blur-sm rounded-full p-1 shadow-md hidden">
                  <button id="zoomOutBtn" class="canvas-tool-btn relative bottom-0 right-0 p-2" title="Zoom Out (-)">
                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clip-rule="evenodd" /></svg>
@@ -91,6 +98,9 @@
                  <button id="resetViewBtn" class="canvas-tool-btn relative bottom-0 right-0 p-2" title="Reset View (Zoom & Pan)">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path fill-rule="evenodd" d="M15.312 11.344A5.5 5.5 0 1111.5 6.656v1.094a.75.75 0 001.5 0v-2.5a.75.75 0 00-.75-.75h-2.5a.75.75 0 000 1.5h1.094a4 4 0 103.468 5.344z" clip-rule="evenodd" /></svg>
                  </button>
+                 <button id="fitToScreenBtn" class="canvas-tool-btn relative bottom-0 right-0 p-2" title="Fit to Screen (F)">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5"><path d="M6.5 3.5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-5.5V9a.75.75 0 01-1.5 0V3.5zM12 15.25a.75.75 0 01.75.75v-5.5H17a.75.75 0 010 1.5h-4.25v4.25a.75.75 0 01-.75.75zM3.5 6.5A.75.75 0 014.25 7v5.5H9a.75.75 0 010 1.5H3.5a.75.75 0 01-.75-.75v-6.5zM15.25 8a.75.75 0 01.75-.75h-5.5V3a.75.75 0 011.5 0v4.25h4.25a.75.75 0 01.75.75z" /></svg>
+                </button>
              </div>
         </div>
     </main>
@@ -205,6 +215,34 @@
             <div class="flex justify-end space-x-3">
                 <button id="cancelUnloadBtn" class="btn btn-secondary">No</button>
                 <button id="confirmUnloadBtn" class="btn btn-danger">Yes</button> </div>
+        </div>
+    </div>
+
+    <div id="helpModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="text-xl font-bold mb-4">Keyboard Shortcuts</h2>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+                <div><kbd>B</kbd></div><div>Toggle Bounding Box Tool</div>
+                <div><kbd>P</kbd></div><div>Toggle Pen Tool</div>
+                <div><kbd>T</kbd></div><div>Toggle Text Tool</div>
+                <div><kbd>Esc</kbd></div><div>Cancel Drawing / Close Modal</div>
+                <div><kbd>Delete</kbd> / <kbd>Backspace</kbd></div><div>Delete Selected</div>
+                <div><kbd>Ctrl</kbd> + <kbd>C</kbd></div><div>Copy Selected</div>
+                <div><kbd>Ctrl</kbd> + <kbd>V</kbd></div><div>Paste (Duplicate) Selected</div>
+                <div><kbd>Ctrl</kbd> + <kbd>A</kbd></div><div>Select All</div>
+                <div><kbd>Arrow Keys</kbd></div><div>Nudge Selected</div>
+                <div><kbd>Shift</kbd> + <kbd>Arrow Keys</kbd></div><div>Nudge Selected (Large)</div>
+                <div><kbd>Ctrl</kbd> + <kbd>Z</kbd></div><div>Undo</div>
+                <div><kbd>Ctrl</kbd> + <kbd>Y</kbd></div><div>Redo</div>
+                <div><kbd>+</kbd> / <kbd>=</kbd></div><div>Zoom In</div>
+                <div><kbd>-</kbd></div><div>Zoom Out</div>
+                <div><kbd>0</kbd></div><div>Reset Zoom</div>
+                <div><kbd>F</kbd></div><div>Fit to Screen</div>
+                <div><kbd>?</kbd></div><div>Show Help</div>
+            </div>
+            <button id="closeHelpModalBtn" class="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
         </div>
     </div>
 

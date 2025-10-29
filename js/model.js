@@ -12,7 +12,7 @@ export class AnnotationModel {
         // --- Core Application State ---
         this.image = null;             // The Image object loaded
         this.boxes = [];               // Array of annotation objects
-        this.selectedBoxId = null;     // ID of the currently selected box
+        this.selectedBoxIds = [];     // IDs of the currently selected boxes
         this.nextId = 0;               // Counter for new box IDs
         
         // --- View Transform State (Persistent) ---
@@ -60,6 +60,24 @@ export class AnnotationModel {
             text: "Not defined",
             // Note: color, fontSize, and opacity are no longer stored here
         };
+        this.boxes.push(newBox);
+        return newBox;
+    }
+
+    /** Duplicates an existing box by its ID. */
+    copyBox(idToCopy) {
+        const boxToCopy = this.boxes.find(box => box.id === idToCopy);
+        if (!boxToCopy) return null;
+
+        const newBox = JSON.parse(JSON.stringify(boxToCopy)); // Deep copy
+        newBox.id = this.nextId++;
+        newBox.x += 10; // Offset the new box slightly
+        newBox.y += 10;
+
+        if (newBox.type === 'poly') {
+            newBox.points = newBox.points.map(p => ({ x: p.x + 10, y: p.y + 10 }));
+        }
+
         this.boxes.push(newBox);
         return newBox;
     }

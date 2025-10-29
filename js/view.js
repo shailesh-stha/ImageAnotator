@@ -27,6 +27,7 @@ export class AnnotationView {
 
             canvasContainer: document.getElementById("canvasContainer"),
             placeholder: document.getElementById("placeholder"),
+            loadingIndicator: document.getElementById("loadingIndicator"),
             unloadImageBtn: document.getElementById("unloadImageBtn"),
             annotationList: document.getElementById("annotationList"),
             undoBtn: document.getElementById("undoBtn"),
@@ -52,14 +53,25 @@ export class AnnotationView {
             zoomInBtn: document.getElementById("zoomInBtn"),
             zoomOutBtn: document.getElementById("zoomOutBtn"),
             zoomLevelDisplay: document.getElementById("zoomLevelDisplay"),
+            fitToScreenBtn: document.getElementById("fitToScreenBtn"),
             unloadConfirmModal: document.getElementById("unloadConfirmModal"),
             confirmUnloadBtn: document.getElementById("confirmUnloadBtn"),
             cancelUnloadBtn: document.getElementById("cancelUnloadBtn"),
+            helpModal: document.getElementById("helpModal"),
+            closeHelpModalBtn: document.getElementById("closeHelpModalBtn"),
         };
 
         // --- Transient View State ---
         this.isEditingText = false;
         this.tooltip = null;
+    }
+
+    showLoadingIndicator() {
+        this.DOMElements.loadingIndicator.classList.remove("hidden");
+    }
+
+    hideLoadingIndicator() {
+        this.DOMElements.loadingIndicator.classList.add("hidden");
     }
 
     // --- Public UI Update Methods (Called by ViewModel) ---
@@ -95,10 +107,19 @@ export class AnnotationView {
         this.DOMElements.redoBtn.disabled = !canRedo;
     }
 
-    updateDeleteButton(selectedId) {
-        this.DOMElements.deleteBtn.disabled = selectedId === null;
+    updateDeleteButton(selectedIds) {
+        this.DOMElements.deleteBtn.disabled = selectedIds.length === 0;
     }
 
+    updateGlobalStyleControls(styleState) {
+        const { colorPicker, fontSizeSlider, fontSizeValueInput, opacitySlider, opacityValueInput } = this.DOMElements;
+
+        colorPicker.value = styleState.color;
+
+        fontSizeSlider.value = styleState.fontSize;
+        fontSizeValueInput.value = styleState.fontSize;
+
+        opacitySlider.value = styleState.opacity * 100;
     updateGlobalStyleControls(styleState) {
         const { colorPicker, fontSizeSlider, fontSizeValueInput, opacitySlider, opacityValueInput } = this.DOMElements;
 
@@ -111,7 +132,33 @@ export class AnnotationView {
         opacityValueInput.value = Math.round(styleState.opacity * 100);
     }
 
-    updateAnnotationList(boxes, selectedId, handlers) {
+    updateAnnotationHighlight(annotationId, isHovered) {
+        const item = this.DOMElements.annotationList.querySelector(`[data-id="${annotationId}"]`);
+        if (item) {
+            item.classList.toggle('hovered', isHovered);
+        }
+    }
+
+    updateToolHighlights(activeTool) {
+        const { addBoxBtn, penToolBtn, addTextBtn } = this.DOMElements;
+        [addBoxBtn, penToolBtn, addTextBtn].forEach(btn => {
+            btn.classList.remove('btn-primary');
+            btn.classList.add('btn-secondary');
+        });
+
+        if (activeTool === 'bbox') {
+            addBoxBtn.classList.add('btn-primary');
+            addBoxBtn.classList.remove('btn-secondary');
+        } else if (activeTool === 'pen') {
+            penToolBtn.classList.add('btn-primary');
+            penToolBtn.classList.remove('btn-secondary');
+        } else if (activeTool === 'text') {
+            addTextBtn.classList.add('btn-primary');
+            addTextBtn.classList.remove('btn-secondary');
+        }
+    }
+
+    updateAnnotationList(boxes, selectedIds, handlers) {
         const { annotationList } = this.DOMElements;
         annotationList.innerHTML = "";
 
@@ -128,11 +175,11 @@ export class AnnotationView {
         boxes.forEach((box) => {
             const item = document.createElement("div");
             item.className = `annotation-item p-2 rounded-md cursor-pointer flex justify-between items-center text-sm ${
-                box.id === selectedId ? "bg-indigo-100" : "hover:bg-gray-100"
+                selectedIds.includes(box.id) ? "bg-indigo-100" : "hover:bg-gray-100"
             }`;
             item.dataset.id = box.id;
 
-            item.addEventListener("click", () => handlers.onAnnotationListClick(box.id));
+            item.addEventListener("click", (e) => handlers.onAnnotationListClick(box.id, e.ctrlKey || e.metaKey));
             item.addEventListener("mouseenter", () => handlers.onAnnotationListHover(box.id));
             item.addEventListener("mouseleave", () => handlers.onAnnotationListLeave());
 
@@ -163,7 +210,17 @@ export class AnnotationView {
                 handlers.onDeleteAnnotation(box.id);
             });
 
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "list-item-btn copy";
+            copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M7 3.5A1.5 1.5 0 018.5 2h6.5A1.5 1.5 0 0116.5 3.5v6.5a1.5 1.5 0 01-1.5 1.5h-1.879a.75.75 0 00-.53.22l-2.122 2.121a.75.75 0 01-1.06 0l-2.122-2.121a.75.75 0 00-.53-.22H4.5A1.5 1.5 0 013 10V5.5A2.5 2.5 0 015.5 3H7v.5z" /><path d="M5 6.5a.5.5 0 00-.5.5v8.5a1.5 1.5 0 001.5 1.5h8.5a.5.5 0 00.5-.5v-1.5a.75.75 0 011.5 0V16a2 2 0 01-2 2H6a3 3 0 01-3-3V7a1 1 0 011-1h1z" /></svg>`;
+            copyBtn.title = "Duplicate annotation";
+            copyBtn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                handlers.onCopyAnnotation(box.id);
+            });
+
             btnGroup.appendChild(editBtn);
+            btnGroup.appendChild(copyBtn);
             btnGroup.appendChild(deleteListBtn);
             item.appendChild(btnGroup);
             annotationList.appendChild(item);
@@ -204,6 +261,14 @@ export class AnnotationView {
 
     hideUnloadConfirmModal() {
         this.DOMElements.unloadConfirmModal.classList.add("hidden");
+    }
+
+    showHelpModal() {
+        this.DOMElements.helpModal.classList.remove("hidden");
+    }
+
+    hideHelpModal() {
+        this.DOMElements.helpModal.classList.add("hidden");
     }
 
     createTextInput(box, cleanupCallback) {
@@ -377,6 +442,7 @@ export class AnnotationView {
         // Modal Events
         d.zoomInBtn.addEventListener("click", handlers.onZoomIn);
         d.zoomOutBtn.addEventListener("click", handlers.onZoomOut);
+        d.fitToScreenBtn.addEventListener("click", handlers.onFitToScreen);
         d.confirmUnloadBtn.addEventListener("click", handlers.onConfirmUnload);
         d.cancelUnloadBtn.addEventListener("click", handlers.onCancelUnload);
         d.unloadConfirmModal.addEventListener("keydown", (e) => {
@@ -386,5 +452,7 @@ export class AnnotationView {
                  handlers.onConfirmUnload();
              }
         });
+
+        d.closeHelpModalBtn.addEventListener("click", handlers.onCloseHelpModal);
     }
 }

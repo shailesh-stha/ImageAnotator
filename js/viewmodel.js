@@ -58,7 +58,7 @@ export class AnnotationViewModel {
             this.model.history.length > 1,
             this.model.redoStack.length > 0
         );
-        this.view.updateDeleteButton(this.model.selectedBoxId);
+        this.view.updateDeleteButton(this.model.selectedBoxIds.length > 0);
 
         this.view.updateGlobalStyleControls({
             color: this.model.globalColor,
@@ -66,13 +66,16 @@ export class AnnotationViewModel {
             opacity: this.model.globalOpacity
         });
 
-        this.view.updateAnnotationList(this.model.boxes, this.model.selectedBoxId, {
+        this.view.updateToolHighlights(this.isDrawingMode ? 'bbox' : this.isPenMode ? 'pen' : this.isTextMode ? 'text' : null);
+
+        this.view.updateAnnotationList(this.model.boxes, this.model.selectedBoxIds, {
             onAnnotationListClick: this.handleAnnotationListClick.bind(this),
             onAnnotationListHover: this.handleAnnotationListHover.bind(this),
             onAnnotationListLeave: this.handleAnnotationListLeave.bind(this),
+            onCopyAnnotation: this.handleCopyAnnotation.bind(this),
             // <-- FIX: Pass correct handler for edit button click -->
             onEditAnnotation: this.handleEditAnnotationText.bind(this),
-            onDeleteAnnotation: this.deleteBoxById.bind(this)
+            onDeleteAnnotation: this.deleteSelectedBoxes.bind(this)
         });
 
         if (this.model.image) {
@@ -82,35 +85,42 @@ export class AnnotationViewModel {
 
     // --- Core Action Methods ---
 
-    selectBox(id) {
+    selectBox(id, multiSelect = false) {
         // <-- FIX: If editing text, finish that first -->
         if (this.view.isEditingText) {
             const input = document.getElementById('annotation-text-input');
             if (input) input.blur(); // Trigger save/cleanup
         }
-        this.model.selectedBoxId = id;
+        if (multiSelect) {
+            const index = this.model.selectedBoxIds.indexOf(id);
+            if (index > -1) {
+                this.model.selectedBoxIds.splice(index, 1);
+            } else {
+                this.model.selectedBoxIds.push(id);
+            }
+        } else {
+            this.model.selectedBoxIds = [id];
+        }
         this.updateUI();
     }
 
     deselectAll(redraw = true) {
-        // <-- FIX: If editing text, finish that first -->
         if (this.view.isEditingText) {
             const input = document.getElementById('annotation-text-input');
-            if (input) input.blur(); // Trigger save/cleanup
+            if (input) input.blur();
         }
-        this.model.selectedBoxId = null;
+        this.model.selectedBoxIds = [];
         if (redraw) this.updateUI();
     }
 
-    deleteBoxById(idToDelete) {
+    deleteSelectedBoxes() {
         if (this.view.isEditingText) return; // Don't delete while editing text
-        this.model.deleteBox(idToDelete);
-        if (this.model.selectedBoxId === idToDelete) {
-            this.deselectAll(false); // Deselect if the deleted box was selected
-        }
+        if (this.model.selectedBoxIds.length === 0) return;
+        this.model.selectedBoxIds.forEach(id => this.model.deleteBox(id));
+        this.deselectAll(false);
         this.model.saveState();
         this.updateUI();
-        this.view.showToast("Annotation deleted.");
+        this.view.showToast("Annotation(s) deleted.");
     }
 
     // --- Utility Methods ---
@@ -277,7 +287,7 @@ export class AnnotationViewModel {
             onAddBox: () => this.handleToggleDrawingMode(),
             onPenToolClick: () => this.handleTogglePenMode(),
             onAddText: () => this.handleToggleTextMode(),
-            onDeleteSelected: () => this.model.selectedBoxId && this.deleteBoxById(this.model.selectedBoxId),
+            onDeleteSelected: this.deleteSelectedBoxes.bind(this),
             onUndoClick: this.handleUndo.bind(this),
             onRedoClick: this.handleRedo.bind(this),
             onResetView: this.handleResetView.bind(this),
@@ -306,6 +316,7 @@ export class AnnotationViewModel {
 
             onZoomIn: this.handleZoomIn.bind(this),
             onZoomOut: this.handleZoomOut.bind(this),
+            onFitToScreen: this.handleFitToScreen.bind(this),
 
             // <-- FIX: Add canvas focus/blur handlers -->
             onCanvasFocus: () => { this.isCanvasFocused = true; },
@@ -313,6 +324,7 @@ export class AnnotationViewModel {
 
              // <-- FIX: Add handler for edit button click -->
              onEditAnnotation: this.handleEditAnnotationText.bind(this),
+            onCloseHelpModal: this.view.hideHelpModal.bind(this.view),
         };
     }
 
@@ -334,6 +346,7 @@ export class AnnotationViewModel {
 
     handleImageLoad(file) {
         if (!file) return;
+        this.view.showLoadingIndicator();
         const reader = new FileReader();
         reader.onload = (event) => {
             const newImage = new Image();
@@ -347,14 +360,17 @@ export class AnnotationViewModel {
                 this.onWindowResize(); // Adjust canvas size and potentially scale history (though history is reset)
                 this.model.saveState(); // Save the initial state with the image
                 this.updateUI(); // Redraw canvas, update buttons, zoom display
+                this.view.hideLoadingIndicator();
                 this.view.showToast("Image loaded successfully!");
             };
              newImage.onerror = () => {
+                this.view.hideLoadingIndicator();
                  this.view.showToast("Error loading image file.", "error");
              };
             newImage.src = event.target.result;
         };
         reader.onerror = () => {
+            this.view.hideLoadingIndicator();
             this.view.showToast("Error reading file.", "error");
         };
         reader.readAsDataURL(file);
@@ -711,18 +727,60 @@ export class AnnotationViewModel {
         }
     }
 
-    handleAnnotationListClick(id) {
-        this.selectBox(id);
+    handleAnnotationListClick(id, multiSelect) {
+        this.selectBox(id, multiSelect);
     }
 
     handleAnnotationListHover(id) {
         this.hoveredBoxId = id;
+        this.view.updateAnnotationHighlight(id, true);
         this.renderer.draw();
     }
 
     handleAnnotationListLeave() {
+        this.view.updateAnnotationHighlight(this.hoveredBoxId, false);
+    handleAnnotationListLeave() {
+        this.view.updateAnnotationHighlight(this.hoveredBoxId, false);
         this.hoveredBoxId = null;
         this.renderer.draw();
+    }
+
+    handleCopyAnnotation() {
+        if (this.model.selectedBoxIds.length > 0) {
+            this.copiedAnnotations = this.model.selectedBoxIds.map(id => this.model.boxes.find(b => b.id === id));
+            this.view.showToast("Annotation(s) copied.");
+        }
+    }
+
+    handlePasteAnnotation() {
+        if (this.copiedAnnotations) {
+            this.copiedAnnotations.forEach(box => {
+                const newBox = this.model.copyBox(box.id);
+                if (newBox) {
+                    this.model.saveState();
+                    this.selectBox(newBox.id);
+                }
+            });
+            this.view.showToast("Annotation(s) pasted.");
+        }
+    }
+
+    handleSelectAll() {
+        this.model.selectedBoxIds = this.model.boxes.map(b => b.id);
+        this.updateUI();
+    }
+
+    handleFitToScreen() {
+        if (!this.model.image) return;
+        const { canvas } = this.view.DOMElements;
+        const { naturalWidth, naturalHeight } = this.model.image;
+        const { width, height } = canvas;
+        const scaleX = width / naturalWidth;
+        const scaleY = height / naturalHeight;
+        this.model.scale = Math.min(scaleX, scaleY);
+        this.model.panX = (width - naturalWidth * this.model.scale) / 2;
+        this.model.panY = (height - naturalHeight * this.model.scale) / 2;
+        this.updateUI();
     }
 
      // <-- FIX: Renamed handler for clarity -->
@@ -808,13 +866,29 @@ export class AnnotationViewModel {
              }
 
             // Box manipulation
-            if (this.model.selectedBoxId !== null) {
-                if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); this.deleteBoxById(this.model.selectedBoxId); }
+            if (this.model.selectedBoxIds.length > 0) {
+                if (e.code === "Delete" || e.code === "Backspace") { e.preventDefault(); this.deleteSelectedBoxes(); }
                 if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) {
                     e.preventDefault(); // Prevent page scrolling
-                    const box = this.model.boxes.find((b) => b.id === this.model.selectedBoxId);
-                    if (!box) return;
-                    const amount = (this.keys["Shift"] ? 10 : 1) / this.model.scale; // Nudge amount
+                    this.model.selectedBoxIds.forEach(id => {
+                        const box = this.model.boxes.find((b) => b.id === id);
+                        if (!box) return;
+                        const amount = (this.keys["Shift"] ? 10 : 1) / this.model.scale; // Nudge amount
+                        let dx = 0, dy = 0;
+                        if (e.code === "ArrowUp") dy = -amount;
+                        if (e.code === "ArrowDown") dy = amount;
+                        if (e.code === "ArrowLeft") dx = -amount;
+                        if (e.code === "ArrowRight") dx = amount;
+
+                        box.x += dx; box.y += dy;
+                        if (box.type === 'poly') {
+                            box.points = box.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                        }
+                    });
+                    this.renderer.draw(); // Immediate feedback
+                }
+            }
+        }
                     let dx = 0, dy = 0;
                     if (e.code === "ArrowUp") dy = -amount;
                     if (e.code === "ArrowDown") dy = amount;
@@ -831,7 +905,14 @@ export class AnnotationViewModel {
         }
 
         // Global shortcuts (Undo/Redo, Clear Selection) - Don't require canvas focus
+        if (e.key === '?') {
+            e.preventDefault();
+            this.view.showHelpModal();
+        }
         if (e.ctrlKey || e.metaKey) {
+            if (e.code === "KeyC") { e.preventDefault(); this.handleCopyAnnotation(); }
+            if (e.code === "KeyV") { e.preventDefault(); this.handlePasteAnnotation(); }
+            if (e.code === "KeyA") { e.preventDefault(); this.handleSelectAll(); }
             if (e.code === "KeyZ") { e.preventDefault(); this.handleUndo(); }
             if (e.code === "KeyY") { e.preventDefault(); this.handleRedo(); }
             if (e.code === "KeyD" && this.model.selectionRect) {
@@ -841,6 +922,18 @@ export class AnnotationViewModel {
                  this.updateUI();
                  this.view.showToast("Selection cleared");
             }
+        }
+
+        if (e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0') {
+            e.preventDefault();
+            if (e.code === 'Equal') this.handleZoomIn();
+            if (e.code === 'Minus') this.handleZoomOut();
+            if (e.code === 'Digit0') this.handleResetView();
+        }
+
+        if (e.code === 'KeyF') {
+            e.preventDefault();
+            this.handleFitToScreen();
         }
     }
 
@@ -867,7 +960,7 @@ export class AnnotationViewModel {
         }
 
         // Save state after finishing arrow key nudge (only if canvas has focus)
-        if (this.isCanvasFocused && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && this.model.selectedBoxId !== null) {
+        if (this.isCanvasFocused && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code) && this.model.selectedBoxIds.length > 0) {
             this.model.saveState();
         }
 
@@ -920,8 +1013,8 @@ export class AnnotationViewModel {
         }
 
         // --- Check Handles (Rotation, Resize) ---
-        const selectedBox = this.model.boxes.find((b) => b.id === this.model.selectedBoxId);
-        if (selectedBox) {
+        if (this.model.selectedBoxIds.length === 1) {
+            const selectedBox = this.model.boxes.find((b) => b.id === this.model.selectedBoxIds[0]);
             const handles = this.renderer.getHandles(selectedBox, this.model.scale);
             const handleRadius = 8 / this.model.scale;
             const rotationRadius = 10 / this.model.scale;
@@ -952,10 +1045,10 @@ export class AnnotationViewModel {
         for (let i = this.model.boxes.length - 1; i >= 0; i--) {
             const box = this.model.boxes[i];
             if (box.visible !== false && this.renderer.isPointInBox(this.startX, this.startY, box)) {
-                if (box.id !== this.model.selectedBoxId) {
-                   this.selectBox(box.id); // Select if not already selected
+                if (!this.model.selectedBoxIds.includes(box.id)) {
+                    this.selectBox(box.id, e.ctrlKey || e.metaKey);
                 }
-                 this.isDragging = true;
+                this.isDragging = true;
                 this.offsetX = this.startX - box.x;
                 this.offsetY = this.startY - box.y;
                 // No redraw here, happens on mousemove
@@ -1025,17 +1118,18 @@ export class AnnotationViewModel {
         }
 
 
-        const box = this.model.boxes.find((b) => b.id === this.model.selectedBoxId);
+        const boxes = this.model.boxes.filter((b) => this.model.selectedBoxIds.includes(b.id));
         
         // Only update cursor or transform if NOT drawing and a box might be involved
         if (!this.isDrawing) {
             this.updateCursor(e.clientX, e.clientY);
         }
 
-        if (!box) return; // No selected box, nothing more to do
+        if (boxes.length === 0) return; // No selected box, nothing more to do
 
 
-        if (this.isRotating) {
+        if (this.isRotating && boxes.length === 1) {
+            const box = boxes[0];
             const centerX = box.x + box.w / 2; const centerY = box.y + box.h / 2;
             const newAngle = Math.atan2(mouseY - centerY, mouseX - centerX) + Math.PI / 2;
             const angleDiff = newAngle - box.angle;
@@ -1054,20 +1148,24 @@ export class AnnotationViewModel {
             this.renderer.draw(); // Redraw during rotation
 
         } else if (this.isDragging) {
-            const newX = mouseX - this.offsetX;
-            const newY = mouseY - this.offsetY;
-            const dx = newX - box.x;
-            const dy = newY - box.y;
+            const dx = mouseX - this.startX;
+            const dy = mouseY - this.startY;
 
-            box.x = newX;
-            box.y = newY;
-            if (box.type === 'poly') {
-                box.points = box.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-                 // Bbox will be updated on mouseup
-            }
+            boxes.forEach(box => {
+                box.x += dx;
+                box.y += dy;
+                if (box.type === 'poly') {
+                    box.points = box.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                }
+            });
+
+            this.startX = mouseX;
+            this.startY = mouseY;
+
             this.renderer.draw(); // Redraw during drag
 
-        } else if (this.isResizing) {
+        } else if (this.isResizing && boxes.length === 1) {
+            const box = boxes[0];
             const pivotX = this.offsetX; const pivotY = this.offsetY;
             const angle = box.angle;
             const cosA = Math.cos(angle); const sinA = Math.sin(angle);
@@ -1201,16 +1299,18 @@ export class AnnotationViewModel {
 
         // --- Finalize Transformations (Drag, Resize, Rotate) ---
         if (this.isDragging || this.isResizing || this.isRotating) {
-            const box = this.model.boxes.find(b => b.id === this.model.selectedBoxId);
-            if (box && box.type === 'poly') {
-                 // Update bounding box based on final point positions
-                 const { x, y, w, h } = this.model.calculateBoundingBox(box.points);
-                 box.x = x; box.y = y; box.w = w; box.h = h;
-            }
-             if (box && (this.isResizing || this.isRotating)) { // Ensure width/height are positive
-                 box.w = Math.abs(box.w);
-                 box.h = Math.abs(box.h);
-             }
+            this.model.selectedBoxIds.forEach(id => {
+                const box = this.model.boxes.find(b => b.id === id);
+                if (box && box.type === 'poly') {
+                    // Update bounding box based on final point positions
+                    const { x, y, w, h } = this.model.calculateBoundingBox(box.points);
+                    box.x = x; box.y = y; box.w = w; box.h = h;
+                }
+                if (box && (this.isResizing || this.isRotating)) { // Ensure width/height are positive
+                    box.w = Math.abs(box.w);
+                    box.h = Math.abs(box.h);
+                }
+            });
             this.model.saveState(); // Save final transformed state
         }
 
@@ -1231,6 +1331,7 @@ export class AnnotationViewModel {
          for (let i = this.model.boxes.length - 1; i >= 0; i--) {
              const box = this.model.boxes[i];
              if (box.visible !== false && this.renderer.isPointInBox(mousePos.x, mousePos.y, box)) {
+                this.selectBox(box.id);
                  this.handleEditAnnotationText(e, box.id); // Call the dedicated edit handler
                  return;
              }

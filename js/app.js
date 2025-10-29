@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
             scale: model.scale, 
             panX: model.panX, 
             panY: model.panY,
-            selectedBoxId: model.selectedBoxId, 
+            selectedBoxIds: model.selectedBoxIds,
             hoveredBoxId: window.annotationApp ? window.annotationApp.hoveredBoxId : null,
             selectionRect: model.selectionRect,
             drawingRect: window.annotationApp ? window.annotationApp.drawingRect : null,
