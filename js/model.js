@@ -7,6 +7,10 @@ export const DEFAULT_OPACITY = 1.0;
 export const MIN_SCALE = 0.2;
 export const MAX_SCALE = 5.0;
 
+/**
+ * @class AnnotationModel
+ * @description Manages the application's state, including annotations, history, and styling.
+ */
 export class AnnotationModel {
     constructor() {
         // --- Core Application State ---
@@ -37,12 +41,16 @@ export class AnnotationModel {
 
     // --- Annotation Accessors/Mutators ---
 
-    /** Deep copy of boxes for immutability and history logging. */
+    /**
+     * @returns {Array} A deep copy of the current annotations.
+     */
     get currentAnnotations() {
         return JSON.parse(JSON.stringify(this.boxes));
     }
     
-    /** Replaces current annotations and recalculates nextId. */
+    /**
+     * @param {Array} newBoxes The new array of annotations.
+     */
     set currentAnnotations(newBoxes) {
         this.boxes = newBoxes;
         this.nextId = newBoxes.length 
@@ -50,7 +58,11 @@ export class AnnotationModel {
             : 0;
     }
 
-    /** Adds a new bounding box based on global styles. */
+    /**
+     * Adds a new bounding box annotation.
+     * @param {Object} box - The bounding box to add.
+     * @returns {Object} The new bounding box.
+     */
     addBox({ x, y, w, h }) {
         const newBox = {
             id: this.nextId++,
@@ -64,7 +76,11 @@ export class AnnotationModel {
         return newBox;
     }
 
-    /** Duplicates an existing box by its ID. */
+    /**
+     * Duplicates an existing annotation by its ID.
+     * @param {number} idToCopy - The ID of the annotation to copy.
+     * @returns {Object|null} The new annotation, or null if the original was not found.
+     */
     copyBox(idToCopy) {
         const boxToCopy = this.boxes.find(box => box.id === idToCopy);
         if (!boxToCopy) return null;
@@ -82,7 +98,11 @@ export class AnnotationModel {
         return newBox;
     }
 
-    /** Adds a new polygon annotation from a set of points. */
+    /**
+     * Adds a new polygon annotation from a set of points.
+     * @param {Array<Object>} points - The points of the polygon.
+     * @returns {Object} The new polygon annotation.
+     */
     addPolygon(points) {
         const { x, y, w, h } = this.calculateBoundingBox(points);
         const newPoly = {
@@ -98,21 +118,29 @@ export class AnnotationModel {
         return newPoly;
     }
 
-    /** Deletes an annotation by ID. */
+    /**
+     * Deletes an annotation by its ID.
+     * @param {number} idToDelete - The ID of the annotation to delete.
+     */
     deleteBox(idToDelete) {
         this.boxes = this.boxes.filter(box => box.id !== idToDelete);
     }
     
     // --- History Management Methods ---
 
-    /** Saves the current state of boxes to the history stack. */
+    /**
+     * Saves the current state of the annotations to the history stack.
+     */
     saveState() {
         if (this.isUndoRedoAction) return;
         this.history.push(this.currentAnnotations);
         this.redoStack = [];
     }
     
-    /** Reverts to the previous state. Returns true if successful. */
+    /**
+     * Reverts to the previous state in the history.
+     * @returns {boolean} - True if the undo was successful, false otherwise.
+     */
     undo() {
         if (this.history.length <= 1) return false;
         this.isUndoRedoAction = true;
@@ -122,7 +150,10 @@ export class AnnotationModel {
         return true;
     }
     
-    /** Re-applies the next undone state. Returns true if successful. */
+    /**
+     * Re-applies the next undone state from the redo stack.
+     * @returns {boolean} - True if the redo was successful, false otherwise.
+     */
     redo() {
         if (this.redoStack.length === 0) return false;
         this.isUndoRedoAction = true;
@@ -135,7 +166,11 @@ export class AnnotationModel {
 
     // --- Utility Methods ---
     
-    /** Calculates the bounding box for a set of polygon points. */
+    /**
+     * Calculates the bounding box for a set of polygon points.
+     * @param {Array<Object>} points - The points of the polygon.
+     * @returns {Object} - The bounding box.
+     */
     calculateBoundingBox(points) {
         const xCoords = points.map(p => p.x);
         const yCoords = points.map(p => p.y);
@@ -146,14 +181,18 @@ export class AnnotationModel {
         return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
     }
     
-    /** Resets global styling properties to default constants. */
+    /**
+     * Resets the global styling properties to their default values.
+     */
     resetGlobalStyles() {
         this.globalColor = DEFAULT_COLOR;
         this.globalFontSize = DEFAULT_FONT_SIZE;
         this.globalOpacity = DEFAULT_OPACITY;
     }
 
-    /** Resets the image and all associated states. */
+    /**
+     * Resets the entire application state.
+     */
     resetAppState() {
         this.image = null;
         this.boxes = [];

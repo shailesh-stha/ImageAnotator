@@ -4,7 +4,19 @@
 const HANDLE_SIZE = 8;
 const ROTATION_HANDLE_OFFSET = 20;
 
+/**
+ * @class CanvasRenderer
+ * @description Handles all drawing operations on the HTML canvas. It is responsible for rendering the image,
+ * annotations, selection handles, and any other visual feedback. It's instantiated by and controlled by the ViewModel.
+ */
 export class CanvasRenderer {
+    /**
+     * @constructor
+     * @param {HTMLCanvasElement} canvas - The main canvas element.
+     * @param {Function} getImage - A function that returns the current image object.
+     * @param {Function} getBoxes - A function that returns the array of annotation boxes.
+     * @param {Function} getState - A function that returns the current application state object (for scale, pan, etc.).
+     */
     constructor(canvas, getImage, getBoxes, getState) {
         this.canvas = canvas;
         this.ctx = canvas.getContext("2d");
@@ -13,6 +25,10 @@ export class CanvasRenderer {
         this.getState = getState;
     }
 
+    /**
+     * @description The main drawing loop. Clears the canvas and redraws the image, all annotations,
+     * highlights, handles, and tooltips based on the current state.
+     */
     draw() {
         const image = this.getImage();
         if (!image) return;
@@ -28,12 +44,9 @@ export class CanvasRenderer {
 
         ctx.drawImage(image, 0, 0, this.canvas.width, this.canvas.height);
 
-        // --- START: Add image border ---
-        // This helps define the image boundaries, especially for PNGs with transparency.
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)"; // A subtle, semi-transparent black border
-        ctx.lineWidth = 1 / scale; // A thin 1px line, adjusted for current zoom
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.lineWidth = 1 / scale;
         ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
-        // --- END: Add image border ---
 
         boxes.forEach(box => {
             if (box.visible !== false) this._drawAnnotation(ctx, box, scale, image);
@@ -59,22 +72,25 @@ export class CanvasRenderer {
 
     // --- Internal Drawing Helpers ---
 
+    /**
+     * @description Converts a hex color string to an RGBA string.
+     * @private
+     * @param {string} hex - The hex color (e.g., "#FF0000").
+     * @param {number} opacity - The opacity (0 to 1).
+     * @returns {string} The RGBA color string.
+     */
     _hexToRgba(hex, opacity) {
-        // Ensure hex is a string and has the correct format
         hex = String(hex);
         if (hex.startsWith('#')) {
             hex = hex.slice(1);
         }
-        // Handle shorthand hex (e.g., #RGB)
         if (hex.length === 3) {
             hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
         }
-        // Default to black if format is still wrong
         if (hex.length !== 6) {
             console.warn("Invalid hex color:", hex, "Defaulting to black.");
             hex = '000000';
         }
-         // Ensure opacity is a number between 0 and 1
         opacity = Number(opacity);
         if (isNaN(opacity) || opacity < 0 || opacity > 1) {
              console.warn("Invalid opacity:", opacity, "Defaulting to 1.");
@@ -85,25 +101,28 @@ export class CanvasRenderer {
             hex.slice(2, 4), 16)},${parseInt(hex.slice(4, 6), 16)},${opacity})`;
     }
 
-
+    /**
+     * @description Draws a semi-transparent highlight over a box.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {object} box - The annotation box to highlight.
+     * @param {number} scale - The current canvas scale.
+     */
     _drawHighlight(ctx, box, scale) {
-        if (box.isTextOnly === true) return; // Don't highlight text-only boxes
+        if (box.isTextOnly === true) return;
 
         ctx.save();
-        // Translate to the bounding box center for rotation
         ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
         ctx.rotate(box.angle);
 
         const { globalColor } = this.getState();
-        ctx.fillStyle = this._hexToRgba(globalColor, 0.2); // Use global color with low opacity
+        ctx.fillStyle = this._hexToRgba(globalColor, 0.2);
 
         if (box.type === 'poly') {
-            // Polygon points are absolute, need to translate them relative to the bounding box center for rotated drawing
             const centerX = box.x + box.w / 2;
             const centerY = box.y + box.h / 2;
             ctx.beginPath();
             box.points.forEach((p, i) => {
-                 // Translate points to be relative to the bounding box center before rotation is applied
                 const translatedX = p.x - centerX;
                 const translatedY = p.y - centerY;
                 if (i === 0) ctx.moveTo(translatedX, translatedY);
@@ -112,12 +131,19 @@ export class CanvasRenderer {
             ctx.closePath();
             ctx.fill();
         } else {
-            // Rectangle highlight is drawn centered at (0,0) in the transformed context
             ctx.fillRect(-box.w / 2, -box.h / 2, box.w, box.h);
         }
         ctx.restore();
     }
 
+    /**
+     * @description Draws a single annotation (box and text).
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {object} box - The annotation box object.
+     * @param {number} scale - The current canvas scale.
+     * @param {HTMLImageElement} image - The main image (used for scaling context on export).
+     */
     _drawAnnotation(ctx, box, scale, image) {
         const isMainCanvas = ctx === this.ctx;
         const lineWidth = isMainCanvas
@@ -126,19 +152,16 @@ export class CanvasRenderer {
 
         const { globalColor, globalOpacity, globalFontSize } = this.getState();
 
-        ctx.save(); // Save the initial state for this annotation
+        ctx.save();
 
-        // --- Draw Shape ---
         if (box.isTextOnly !== true) {
             ctx.strokeStyle = this._hexToRgba(globalColor, globalOpacity);
             ctx.lineWidth = lineWidth;
             
-            // Set a dashed line pattern scaled by the zoom
             const dashPattern = [6 / scale, 6 / scale];
             ctx.setLineDash(dashPattern);
 
             if (box.type === 'poly') {
-                // Polygons use absolute world coordinates - draw them directly
                 ctx.beginPath();
                 box.points.forEach((p, i) => {
                     if (i === 0) ctx.moveTo(p.x, p.y);
@@ -147,63 +170,42 @@ export class CanvasRenderer {
                 ctx.closePath();
                 ctx.stroke();
             } else {
-                // Rectangles are defined by top-left, w, h - apply transform to draw
-                ctx.save(); // Save before transforming for the rectangle
+                ctx.save();
                 ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
                 ctx.rotate(box.angle);
                 ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
-                ctx.restore(); // Restore after drawing the rectangle
+                ctx.restore();
             }
             
-            // Reset line dash to solid for other drawing operations
             ctx.setLineDash([]);
         }
 
-        // --- Draw Text ---
-        // Apply transformation to the bounding box center *for text positioning*
-        ctx.save(); // Save state specifically for text drawing
+        ctx.save();
         ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
         ctx.rotate(box.angle);
 
-        // Calculate text overflow (relative to the canvas, requires some estimation)
         const textMetrics = this._getTextLinesAndHeight(ctx, box, globalFontSize);
-        // Estimate world Y coord of bottom of text IF placed below the box center
-        // This is an approximation but good enough for deciding placement
         const textBottomWorldY = box.y + box.h/2 + (box.h / 2) * Math.cos(box.angle) + (5/scale) + textMetrics.totalHeight;
         
-        const canvasWorldHeight = ctx.canvas.height / (isMainCanvas ? scale : 1); // Convert canvas height to world coords
+        const canvasWorldHeight = ctx.canvas.height / (isMainCanvas ? scale : 1);
 
         const textWouldOverflow = textBottomWorldY > canvasWorldHeight;
 
-        // Draw text relative to the transformed center (0,0)
-        // --- START: MODIFICATION ---
-        this._drawTextWithWrapping(ctx, box, textWouldOverflow, 1.0, globalFontSize); // Hardcoded opacity to 1.0
-        // --- END: MODIFICATION ---
+        this._drawTextWithWrapping(ctx, box, textWouldOverflow, 1.0, globalFontSize);
 
-        ctx.restore(); // Restore state after text drawing (removes text transform)
+        ctx.restore();
 
-        ctx.restore(); // Restore the initial state saved at the beginning
+        ctx.restore();
     }
 
-
-    _drawRect(ctx, box) {
-        // This function is now only responsible for drawing the rect path
-        // Transformations are handled in _drawAnnotation
-         ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
-    }
-
-    _drawPolygon(ctx, box) {
-        // This function is now only responsible for drawing the poly path
-        // Transformations are handled in _drawAnnotation (for text)
-        ctx.beginPath();
-        box.points.forEach((p, i) => {
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-        });
-        ctx.closePath();
-        ctx.stroke();
-    }
-
+    /**
+     * @description Draws the path for the pen tool as it's being created.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {Array<{x: number, y: number}>} path - The points in the current path.
+     * @param {{x: number, y: number}|null} previewPoint - The current mouse position for previewing the next segment.
+     * @param {number} scale - The current canvas scale.
+     */
     _drawCurrentPath(ctx, path, previewPoint, scale) {
         const { globalColor, globalOpacity } = this.getState();
         ctx.save();
@@ -223,17 +225,24 @@ export class CanvasRenderer {
         }
         ctx.stroke();
         
-        ctx.setLineDash([]); // Reset for other drawing (like the points)
+        ctx.setLineDash([]);
 
         ctx.fillStyle = globalColor;
         path.forEach((p, i) => {
             ctx.beginPath();
-            ctx.arc(p.x, p.y, (i === 0 ? 6 : 4) / scale, 0, Math.PI * 2); // First point bigger
+            ctx.arc(p.x, p.y, (i === 0 ? 6 : 4) / scale, 0, Math.PI * 2);
             ctx.fill();
         });
         ctx.restore();
     }
 
+    /**
+     * @description Draws the preview of a rectangle being drawn.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {object} rect - The rectangle dimensions {x, y, w, h}.
+     * @param {number} scale - The current canvas scale.
+     */
     _drawDrawingPreview(ctx, rect, scale) {
         const { globalColor, globalOpacity } = this.getState();
         ctx.save();
@@ -242,11 +251,18 @@ export class CanvasRenderer {
         
         ctx.setLineDash([6 / scale, 6 / scale]);
         ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-        ctx.setLineDash([]); // Reset
+        ctx.setLineDash([]);
         
         ctx.restore();
     }
 
+    /**
+     * @description Draws the selection rectangle for cropping.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {object} rect - The rectangle dimensions {x, y, w, h}.
+     * @param {number} scale - The current canvas scale.
+     */
     _drawSelectionRectangle(ctx, rect, scale) {
         ctx.save();
         ctx.strokeStyle = "#FFFFFF";
@@ -260,32 +276,35 @@ export class CanvasRenderer {
         ctx.restore();
     }
 
+    /**
+     * @description Draws the selection handles (for resizing and rotating) around a box.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {object} box - The selected annotation box.
+     * @param {number} scale - The current canvas scale.
+     */
     _drawSelectionHandles(ctx, box, scale) {
         const { globalColor, globalOpacity } = this.getState();
         const handles = this.getHandles(box, scale);
 
         ctx.fillStyle = this._hexToRgba(globalColor, globalOpacity);
-        ctx.strokeStyle = this._hexToRgba(globalColor, globalOpacity); // Set stroke for lines
-        ctx.lineWidth = 2 / scale; // Set line width for lines
+        ctx.strokeStyle = this._hexToRgba(globalColor, globalOpacity);
+        ctx.lineWidth = 2 / scale;
 
         if (box.isTextOnly === true) {
             ctx.save();
-            // Translate to the bounding box center for rotation
             ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
             ctx.rotate(box.angle);
             
-            // Draw a dashed rectangle instead of resize handles
             ctx.setLineDash([6 / scale, 6 / scale]);
             ctx.strokeRect(-box.w / 2, -box.h / 2, box.w, box.h);
             ctx.restore();
             
-            // Still draw the line to the rotation handle
             ctx.beginPath();
             ctx.moveTo(handles.n.x, handles.n.y);
             ctx.lineTo(handles.rotation.x, handles.rotation.y);
             ctx.stroke();
 
-            // Still draw the rotation handle circle
             ctx.beginPath();
             ctx.arc(
                 handles.rotation.x,
@@ -296,16 +315,14 @@ export class CanvasRenderer {
             );
             ctx.fill();
             
-            return; // Stop here, don't draw the resize handles
+            return;
         }
 
-        // Line to rotation handle
         ctx.beginPath();
         ctx.moveTo(handles.n.x, handles.n.y);
         ctx.lineTo(handles.rotation.x, handles.rotation.y);
-        ctx.stroke(); // Use the pre-set strokeStyle and lineWidth
+        ctx.stroke();
 
-        // Rotation handle circle
         ctx.beginPath();
         ctx.arc(
             handles.rotation.x,
@@ -316,7 +333,6 @@ export class CanvasRenderer {
         );
         ctx.fill();
 
-        // Resize handle squares
         ["nw", "ne", "sw", "se", "n", "s", "w", "e"].forEach((key) => {
             const pos = handles[key];
             ctx.fillRect(
@@ -328,6 +344,12 @@ export class CanvasRenderer {
         });
     }
 
+    /**
+     * @description Draws a tooltip near the cursor.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context.
+     * @param {{text: string, x: number, y: number}} tooltip - The tooltip object.
+     */
     _drawTooltip(ctx, tooltip) {
         const text = tooltip.text;
         ctx.font = "12px Inter";
@@ -339,21 +361,26 @@ export class CanvasRenderer {
         ctx.fillText(text, tooltip.x + padding, tooltip.y + 14);
     }
 
-    // Draws text relative to the current transform (assumed to be box center)
+    /**
+     * @description Draws wrapped text for an annotation, positioning it above or below the box.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context to draw on.
+     * @param {object} box - The annotation box object containing the text and dimensions.
+     * @param {boolean} isOverflowing - If true, text is drawn above the box; otherwise, below.
+     * @param {number} opacity - The opacity for the text.
+     * @param {number} fontSize - The font size for the text.
+     */
     _drawTextWithWrapping(ctx, box, isOverflowing, opacity, fontSize) {
         const text = box.text;
-        if (!text || text.trim() === "" || text === "Not defined") return; // Don't draw placeholder
+        if (!text || text.trim() === "" || text === "Not defined") return;
 
-        const { scale } = this.getState(); // Need scale for margin calculation
+        const { scale } = this.getState();
         const textMetrics = this._getTextLinesAndHeight(ctx, box, fontSize);
         const lineHeight = fontSize * 1.2;
         
-        // Use scale if it's the main canvas, otherwise use 1
         const effectiveScale = ctx === this.ctx ? scale : 1;
-        const margin = 5 / effectiveScale; // 5px margin in world space
+        const margin = 5 / effectiveScale;
 
-        // Position relative to center (0,0 in current transform)
-        // Position above top edge if overflowing, otherwise below bottom edge
         let y = isOverflowing
                 ? -box.h / 2 - textMetrics.totalHeight - margin
                 : box.h / 2 + margin;
@@ -362,32 +389,36 @@ export class CanvasRenderer {
         ctx.fillStyle = this._hexToRgba(globalColor, opacity);
         ctx.font = `${fontSize}px Inter`;
         ctx.textAlign = "center";
-        ctx.textBaseline = "top"; // Makes positioning easier from the top 'y' coordinate
+        ctx.textBaseline = "top";
 
-        // White outline for better readability against complex backgrounds
         ctx.strokeStyle = `rgba(255, 255, 255, ${opacity * 0.8})`;
-        ctx.lineWidth = 4 / effectiveScale; // Scale outline width based on zoom
+        ctx.lineWidth = 4 / effectiveScale;
         ctx.lineJoin = "round";
 
         const drawTextLine = (textLine, x, y) => {
-            ctx.strokeText(textLine, x, y); // Draw outline first
-            ctx.fillText(textLine, x, y);   // Draw filled text on top
+            ctx.strokeText(textLine, x, y);
+            ctx.fillText(textLine, x, y);
         };
 
-        // Draw each line relative to the calculated starting y
         textMetrics.lines.forEach((line, index) => {
             drawTextLine(line, 0, y + (index * lineHeight));
         });
     }
 
 
-
+    /**
+     * @description Calculates the lines and total height for wrapped text within a box.
+     * @private
+     * @param {CanvasRenderingContext2D} ctx - The canvas context for text measurement.
+     * @param {object} box - The annotation box.
+     * @param {number} fontSize - The font size.
+     * @returns {{lines: string[], totalHeight: number}} The wrapped lines and their total height.
+     */
     _getTextLinesAndHeight(ctx, box, fontSize) {
         const text = box.text || "";
-        // Use box width for wrapping, allow slightly wider with * 1.2
         const maxWidth = box.w * 1.2;
         const lineHeight = fontSize * 1.2;
-        ctx.font = `${fontSize}px Inter`; // Set font for measurement
+        ctx.font = `${fontSize}px Inter`;
 
         let lines = [];
         const words = text.split(" ");
@@ -397,16 +428,14 @@ export class CanvasRenderer {
             const testLine = currentLine + words[n] + " ";
             const metrics = ctx.measureText(testLine);
             const testWidth = metrics.width;
-            // If adding the word exceeds max width AND the line isn't empty, push the current line and start a new one
-            if (testWidth > maxWidth && currentLine.length > 0) { // Check currentLine length
+            if (testWidth > maxWidth && currentLine.length > 0) {
                 lines.push(currentLine.trim());
                 currentLine = words[n] + " ";
             } else {
-                currentLine = testLine; // Otherwise, add the word to the current line
+                currentLine = testLine;
             }
         }
-        lines.push(currentLine.trim()); // Add the last line
-        // Filter out empty lines potentially caused by multiple spaces
+        lines.push(currentLine.trim());
         lines = lines.filter(line => line.length > 0);
         return { lines, totalHeight: lines.length * lineHeight };
     }
@@ -414,10 +443,15 @@ export class CanvasRenderer {
 
     // --- Utility Methods ---
 
+    /**
+     * @description Calculates the screen coordinates of all resize and rotation handles for a box.
+     * @param {object} box - The annotation box.
+     * @param {number} scale - The current canvas scale.
+     * @returns {Object.<string, {x: number, y: number}>} An object mapping handle names to their coordinates.
+     */
     getHandles(box, scale) {
         const centerX = box.x + box.w / 2;
         const centerY = box.y + box.h / 2;
-        // Handle positions relative to the center before rotation
         const corners = {
             nw: { x: -box.w / 2, y: -box.h / 2 },
             ne: { x: box.w / 2, y: -box.h / 2 },
@@ -427,13 +461,12 @@ export class CanvasRenderer {
             s: { x: 0, y: box.h / 2 },
             w: { x: -box.w / 2, y: 0 },
             e: { x: box.w / 2, y: 0 },
-            rotation: { x: 0, y: -box.h / 2 - ROTATION_HANDLE_OFFSET / scale }, // Offset above the top-middle handle
+            rotation: { x: 0, y: -box.h / 2 - ROTATION_HANDLE_OFFSET / scale },
         };
 
         const rotatedHandles = {};
         for (const key in corners) {
             const corner = corners[key];
-            // Apply rotation formula
             rotatedHandles[key] = {
                 x: centerX + corner.x * Math.cos(box.angle) - corner.y * Math.sin(box.angle),
                 y: centerY + corner.x * Math.sin(box.angle) + corner.y * Math.cos(box.angle),
@@ -442,60 +475,79 @@ export class CanvasRenderer {
         return rotatedHandles;
     }
 
+    /**
+     * @description Checks if a point is inside a rotated bounding box.
+     * @param {number} px - The x-coordinate of the point.
+     * @param {number} py - The y-coordinate of the point.
+     * @param {object} box - The annotation box.
+     * @returns {boolean} True if the point is inside the box.
+     */
     isPointInBox(px, py, box) {
-        // Use polygon check if it's a polygon
         if (box.type === 'poly') {
              return this.isPointInPolygon(px, py, box.points);
         }
-        // Check point against rotated rectangle
         const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
         const dx = px - centerX, dy = py - centerY;
-        const angle = -box.angle; // Rotate point opposite to box rotation
+        const angle = -box.angle;
         const rotatedX = dx * Math.cos(angle) - dy * Math.sin(angle);
         const rotatedY = dx * Math.sin(angle) + dy * Math.cos(angle);
-        // Check if the rotated point is within the unrotated box boundaries
         return Math.abs(rotatedX) < box.w / 2 && Math.abs(rotatedY) < box.h / 2;
     }
 
-    // Ray casting algorithm for point-in-polygon test
+    /**
+     * @description Checks if a point is inside a polygon using the ray casting algorithm.
+     * @param {number} px - The x-coordinate of the point.
+     * @param {number} py - The y-coordinate of the point.
+     * @param {Array<{x: number, y: number}>} points - The vertices of the polygon.
+     * @returns {boolean} True if the point is inside the polygon.
+     */
     isPointInPolygon(px, py, points) {
         let isInside = false;
         for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
             const xi = points[i].x, yi = points[i].y;
             const xj = points[j].x, yj = points[j].y;
 
-            // Check if the horizontal ray intersects with the edge
-            const intersect = ((yi > py) !== (yj > py)) // Point y is between edge y endpoints
-                            && (px < (xj - xi) * (py - yi) / (yj - yi) + xi); // Point x is to the left of the edge's x at point y
+            const intersect = ((yi > py) !== (yj > py))
+                            && (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
 
             if (intersect) {
-                isInside = !isInside; // Flip the inside/outside state
+                isInside = !isInside;
             }
         }
         return isInside;
     }
 
+    /**
+     * @description Checks if a point is inside a circle.
+     * @param {number} px - The x-coordinate of the point.
+     * @param {number} py - The y-coordinate of the point.
+     * @param {number} cx - The x-coordinate of the circle's center.
+     * @param {number} cy - The y-coordinate of the circle's center.
+     * @param {number} r - The radius of the circle.
+     * @returns {boolean} True if the point is inside the circle.
+     */
     isPointInCircle(px, py, cx, cy, r) {
         const dx = px - cx;
         const dy = py - cy;
-        return dx * dx + dy * dy <= r * r; // Use squared distance for efficiency
+        return dx * dx + dy * dy <= r * r;
     }
 
-    // Creates a high-resolution canvas for export
+    /**
+     * @description Creates a new, high-resolution canvas with the rendered image and annotations,
+     * suitable for exporting or copying. Can crop to a selection rectangle.
+     * @param {HTMLImageElement} image - The source image.
+     * @param {Array<object>} boxes - The array of annotation boxes.
+     * @param {object|null} selectionRect - An optional rectangle to crop the output to.
+     * @returns {HTMLCanvasElement} The newly created high-resolution canvas.
+     */
     createHighResCanvas(image, boxes, selectionRect) {
-        // Calculate the scaling factor from canvas world-space to natural image-space
         const scaleX = image.naturalWidth / this.canvas.width;
         const scaleY = image.naturalHeight / this.canvas.height;
         
-        // These should be virtually identical due to aspect-ratio locked resize
-        // We average them to account for any minor floating-point discrepancies
         const exportScale = (scaleX + scaleY) / 2;
 
         let offscreenCanvas, offscreenCtx;
 
-        // Determine crop area based on selectionRect or full image
-        // selectionRect is in WORLD coordinates (i.e., 0 -> canvas.width)
-        // We must scale it to NATURAL IMAGE coordinates for cropping
         const crop = selectionRect
             ? { 
                 x: selectionRect.x * exportScale, 
@@ -505,7 +557,6 @@ export class CanvasRenderer {
               }
             : { x: 0, y: 0, w: image.naturalWidth, h: image.naturalHeight };
 
-        // Ensure crop dimensions are valid integers
         crop.w = Math.max(1, Math.round(crop.w));
         crop.h = Math.max(1, Math.round(crop.h));
         crop.x = Math.round(crop.x);
@@ -517,66 +568,51 @@ export class CanvasRenderer {
         offscreenCanvas.height = crop.h;
         offscreenCtx = offscreenCanvas.getContext("2d");
 
-        // Draw the (potentially cropped) image onto the offscreen canvas
         offscreenCtx.drawImage(
             image,
-            crop.x, crop.y, crop.w, crop.h, // Source rectangle (from original image)
-            0, 0, crop.w, crop.h          // Destination rectangle (on offscreen canvas)
+            crop.x, crop.y, crop.w, crop.h,
+            0, 0, crop.w, crop.h
         );
 
-        // --- Draw Annotations on High-Res Canvas ---
-        // Need global styles scaled appropriately for high-res
         const originalGetState = this.getState;
-        const currentGlobalState = originalGetState(); // Get current global state
+        const currentGlobalState = originalGetState();
         
-        // Scale font size based on the export scale
         const highResFontSize = currentGlobalState.globalFontSize * exportScale;
         
         const highResState = {
-            ...currentGlobalState, // Copy all existing state
-            scale: 1, // Use scale 1 for drawing on offscreen canvas
-            globalFontSize: highResFontSize, // Use scaled font size
+            ...currentGlobalState,
+            scale: 1,
+            globalFontSize: highResFontSize,
         };
 
-        // Temporarily override getState for offscreen drawing context
         this.getState = () => highResState;
 
 
         boxes.forEach((box) => {
             if (box.visible === false) return;
 
-            // Create a scaled copy of the box data for drawing
-            // Box coordinates are in WORLD coordinates (0 -> canvas.width)
             const scaledBox = {
-                ...box, // Copy type, text, angle etc.
-                // Scale and offset coordinates relative to the crop area
+                ...box,
                 x: box.x * exportScale - crop.x,
                 y: box.y * exportScale - crop.y,
                 w: box.w * exportScale,
                 h: box.h * exportScale,
-                // Angle remains the same
-                // Text remains the same
             };
             
-            // Scale points if it's a polygon
             if (box.type === 'poly') {
                 scaledBox.points = box.points.map(p => ({
                     x: p.x * exportScale - crop.x,
                     y: p.y * exportScale - crop.y
                 }));
-                 // Recalculate bounding box based on scaled points for text positioning
                 if (window.annotationApp && window.annotationApp.model) {
                      const { x: sx, y: sy, w: sw, h: sh } = window.annotationApp.model.calculateBoundingBox(scaledBox.points);
                      scaledBox.x = sx; scaledBox.y = sy; scaledBox.w = sw; scaledBox.h = sh;
                 }
             }
 
-            // Draw using the renderer's internal method, passing scale 1
-            // _drawAnnotation will use the overridden highResState for styles
             this._drawAnnotation(offscreenCtx, scaledBox, 1, image);
         });
 
-         // Restore original getState function
         this.getState = originalGetState;
 
         return offscreenCanvas;

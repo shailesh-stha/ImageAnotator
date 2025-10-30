@@ -1,11 +1,24 @@
 // js/view.js
 
+/**
+ * @class AnnotationView
+ * @description Manages all interactions with the DOM, including element selection,
+ * event listener binding, and UI updates. It receives instructions from the
+ * ViewModel but does not contain any application logic itself.
+ */
 export class AnnotationView {
+    /**
+     * @constructor
+     * @param {HTMLCanvasElement} canvas - The main canvas element for drawing.
+     */
     constructor(canvas) {
-        // --- Core DOM Elements ---
+        /**
+         * @property {Object.<string, HTMLElement>} DOMElements
+         * @description A dictionary of all relevant DOM elements for easy access.
+         */
         this.DOMElements = {
             canvas: canvas,
-            ctx: canvas.getContext("2d"), // <-- FIX: Added context reference
+            ctx: canvas.getContext("2d"),
             imageLoader: document.getElementById("imageLoader"),
             jsonLoader: document.getElementById("jsonLoader"),
             uploadBtn: document.getElementById("uploadBtn"),
@@ -61,35 +74,49 @@ export class AnnotationView {
             closeHelpModalBtn: document.getElementById("closeHelpModalBtn"),
         };
 
-        // --- Transient View State ---
+        /**
+         * @property {boolean} isEditingText - Tracks if a text input is currently active on the canvas.
+         */
         this.isEditingText = false;
+        /**
+         * @property {Object|null} tooltip - Stores tooltip information for display.
+         */
         this.tooltip = null;
     }
 
+    /**
+     * @description Shows the loading indicator overlay.
+     */
     showLoadingIndicator() {
         this.DOMElements.loadingIndicator.classList.remove("hidden");
     }
 
+    /**
+     * @description Hides the loading indicator overlay.
+     */
     hideLoadingIndicator() {
         this.DOMElements.loadingIndicator.classList.add("hidden");
     }
 
     // --- Public UI Update Methods (Called by ViewModel) ---
 
+    /**
+     * @description Updates the UI state based on whether an image is currently loaded.
+     * @param {boolean} hasImage - True if an image is loaded, false otherwise.
+     */
     updateImageStatus(hasImage) {
         const {
             placeholder, unloadImageBtn, exportBtn, resetViewBtn,
             addBoxBtn, penToolBtn, addTextBtn,
-            canvasControls, ctx, canvas // <-- FIX: Added ctx and canvas
+            canvasControls, ctx, canvas
         } = this.DOMElements;
 
         placeholder.classList.toggle("hidden", hasImage);
         unloadImageBtn.classList.toggle("hidden", !hasImage);
-        resetViewBtn.classList.toggle("hidden", !hasImage); // This is inside canvasControls now
+        resetViewBtn.classList.toggle("hidden", !hasImage);
         canvasControls.classList.toggle("hidden", !hasImage);
         if (!hasImage) {
             canvasControls.classList.remove('flex');
-            // <-- FIX: Explicitly clear canvas on unload -->
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         } else {
              canvasControls.classList.add('flex');
@@ -102,24 +129,31 @@ export class AnnotationView {
         addTextBtn.disabled = !hasImage;
     }
 
+    /**
+     * @description Enables or disables the undo and redo buttons based on history state.
+     * @param {boolean} canUndo - Whether an undo action is available.
+     * @param {boolean} canRedo - Whether a redo action is available.
+     */
     updateUndoRedoButtons(canUndo, canRedo) {
         this.DOMElements.undoBtn.disabled = !canUndo;
         this.DOMElements.redoBtn.disabled = !canRedo;
     }
 
-    updateDeleteButton(selectedIds) {
-        this.DOMElements.deleteBtn.disabled = selectedIds.length === 0;
+    /**
+     * @description Enables or disables the delete button based on selection.
+     * @param {boolean} hasSelection - True if at least one annotation is selected.
+     */
+    updateDeleteButton(hasSelection) {
+        this.DOMElements.deleteBtn.disabled = !hasSelection;
     }
 
-    updateGlobalStyleControls(styleState) {
-        const { colorPicker, fontSizeSlider, fontSizeValueInput, opacitySlider, opacityValueInput } = this.DOMElements;
-
-        colorPicker.value = styleState.color;
-
-        fontSizeSlider.value = styleState.fontSize;
-        fontSizeValueInput.value = styleState.fontSize;
-
-        opacitySlider.value = styleState.opacity * 100;
+    /**
+     * @description Sets the values of the global style controls (color, font size, opacity).
+     * @param {object} styleState - An object containing the current style values.
+     * @param {string} styleState.color - The hex color code.
+     * @param {number} styleState.fontSize - The font size in pixels.
+     * @param {number} styleState.opacity - The opacity value (0 to 1).
+     */
     updateGlobalStyleControls(styleState) {
         const { colorPicker, fontSizeSlider, fontSizeValueInput, opacitySlider, opacityValueInput } = this.DOMElements;
 
@@ -132,6 +166,11 @@ export class AnnotationView {
         opacityValueInput.value = Math.round(styleState.opacity * 100);
     }
 
+    /**
+     * @description Toggles a visual highlight on an annotation in the side list.
+     * @param {number} annotationId - The ID of the annotation to highlight.
+     * @param {boolean} isHovered - True to add the highlight, false to remove it.
+     */
     updateAnnotationHighlight(annotationId, isHovered) {
         const item = this.DOMElements.annotationList.querySelector(`[data-id="${annotationId}"]`);
         if (item) {
@@ -139,6 +178,10 @@ export class AnnotationView {
         }
     }
 
+    /**
+     * @description Updates the visual state of the tool buttons to indicate which is active.
+     * @param {('bbox'|'pen'|'text'|null)} activeTool - The name of the active tool.
+     */
     updateToolHighlights(activeTool) {
         const { addBoxBtn, penToolBtn, addTextBtn } = this.DOMElements;
         [addBoxBtn, penToolBtn, addTextBtn].forEach(btn => {
@@ -158,11 +201,16 @@ export class AnnotationView {
         }
     }
 
+    /**
+     * @description Re-renders the list of annotations in the sidebar.
+     * @param {Array<object>} boxes - The array of annotation objects from the model.
+     * @param {Array<number>} selectedIds - An array of IDs for the currently selected annotations.
+     * @param {Object.<string, Function>} handlers - Callback functions for interactions within the list.
+     */
     updateAnnotationList(boxes, selectedIds, handlers) {
         const { annotationList } = this.DOMElements;
         annotationList.innerHTML = "";
 
-        // <-- FIX: Correctly check if image exists in the model -->
         const imageExists = window.annotationApp && window.annotationApp.model && window.annotationApp.model.image;
 
         if (boxes.length === 0) {
@@ -185,20 +233,19 @@ export class AnnotationView {
 
             const textSpan = document.createElement("span");
             textSpan.textContent = box.text || `Annotation #${box.id} (${box.type})`;
-            textSpan.className = "truncate mr-2"; // Added margin-right
+            textSpan.className = "truncate mr-2";
             item.appendChild(textSpan);
 
             const btnGroup = document.createElement("div");
-            btnGroup.className = "list-item-btn-group ml-auto"; // Added ml-auto
+            btnGroup.className = "list-item-btn-group ml-auto";
 
             const editBtn = document.createElement("button");
             editBtn.className = "list-item-btn edit";
-            editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>`;
+            editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" /><path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25-1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" /></svg>`;
             editBtn.title = "Edit text";
             editBtn.addEventListener("click", (e) => {
                 e.stopPropagation();
-                // <-- FIX: Ensure double-click handler is called correctly -->
-                handlers.onEditAnnotation(e, box.id); // Pass box id
+                handlers.onEditAnnotation(e, box.id);
             });
 
             const deleteListBtn = document.createElement("button");
@@ -229,6 +276,11 @@ export class AnnotationView {
 
     // --- Feedback & Modal Methods ---
 
+    /**
+     * @description Displays a short-lived notification message.
+     * @param {string} message - The text to display in the toast.
+     * @param {'success'|'error'} [type='success'] - The type of toast, affecting its appearance.
+     */
     showToast(message, type = "success") {
         const toast = document.createElement("div");
         toast.className = `toast ${type}`;
@@ -237,50 +289,75 @@ export class AnnotationView {
         setTimeout(() => toast.remove(), 4500);
     }
 
+    /**
+     * @description Shows the modal dialog for exporting annotations or the image.
+     */
     openExportModal() {
-        // <-- FIX: Ensure window.annotationApp exists before accessing model -->
         const hasAnnotations = window.annotationApp && window.annotationApp.model && window.annotationApp.model.boxes.length > 0;
         this.DOMElements.saveJsonBtn.disabled = !hasAnnotations;
 
         this.DOMElements.exportModal.classList.remove("hidden");
     }
 
+    /**
+     * @description Hides the export modal dialog.
+     */
     closeExportModal() {
         this.DOMElements.exportModal.classList.add("hidden");
     }
 
+    /**
+     * @description Updates the zoom level display with the current scale.
+     * @param {number} scale - The current canvas zoom scale (e.g., 1.0 for 100%).
+     */
     updateZoomDisplay(scale) {
         const percentage = Math.round(scale * 100);
         this.DOMElements.zoomLevelDisplay.textContent = `${percentage}%`;
     }
 
+    /**
+     * @description Shows the modal to confirm unloading the current image.
+     */
     showUnloadConfirmModal() {
         this.DOMElements.unloadConfirmModal.classList.remove("hidden");
         this.DOMElements.confirmUnloadBtn.focus();
     }
 
+    /**
+     * @description Hides the unload confirmation modal.
+     */
     hideUnloadConfirmModal() {
         this.DOMElements.unloadConfirmModal.classList.add("hidden");
     }
 
+    /**
+     * @description Shows the help modal with keyboard shortcuts.
+     */
     showHelpModal() {
         this.DOMElements.helpModal.classList.remove("hidden");
     }
 
+    /**
+     * @description Hides the help modal.
+     */
     hideHelpModal() {
         this.DOMElements.helpModal.classList.add("hidden");
     }
 
+    /**
+     * @description Creates and positions a temporary text input over the canvas for editing an annotation's label.
+     * @param {object} box - The annotation box object being edited.
+     * @param {Function} cleanupCallback - A function to call when editing is complete, passing the final text value.
+     */
     createTextInput(box, cleanupCallback) {
         if (!window.annotationApp || !window.annotationApp.worldToScreen) {
             console.error("ViewModel utility not available. Cannot position text input.");
             return;
         }
 
-        // <-- FIX: Remove existing input if one is already present -->
         const existingInput = document.getElementById('annotation-text-input');
         if (existingInput) {
-            existingInput.blur(); // Trigger cleanup of the old one
+            existingInput.blur();
         }
 
         this.isEditingText = true;
@@ -288,16 +365,14 @@ export class AnnotationView {
         const scale = vm.model.scale;
 
         const input = document.createElement("input");
-        input.id = 'annotation-text-input'; // <-- FIX: Added ID for easier removal
+        input.id = 'annotation-text-input';
         input.type = "text";
         input.value = box.text === "Not defined" ? "" : box.text;
 
-        // Calculate position based on box center and angle
         const centerX = box.x + box.w / 2;
         const centerY = box.y + box.h / 2;
         
-        // Position slightly below the center, adjusted for rotation and scale
-        const offsetYWorld = (box.h / 2) + (10 / scale); // 10px below in screen space
+        const offsetYWorld = (box.h / 2) + (10 / scale);
         
         const worldX = centerX + offsetYWorld * Math.sin(box.angle);
         const worldY = centerY + offsetYWorld * Math.cos(box.angle);
@@ -311,19 +386,18 @@ export class AnnotationView {
         input.style.zIndex = "100";
         input.style.textAlign = "center";
         
-        // Rotate around the center of the input itself
         input.style.transform = `translate(-50%, -50%) rotate(${box.angle}rad)`; 
         input.style.transformOrigin = "center center";
 
         input.style.font = `${vm.model.globalFontSize * scale}px Inter`;
         input.style.border = `1px solid ${vm.model.globalColor}`;
-        input.style.padding = '2px 4px'; // Added padding
-        input.style.backgroundColor = 'rgba(255, 255, 255, 0.9)'; // Slight background
-        input.style.minWidth = `${Math.max(box.w * scale, 80)}px`; // Ensure minimum width
-        input.style.maxWidth = '300px'; // Prevent excessive width
+        input.style.padding = '2px 4px';
+        input.style.backgroundColor = 'rgba(255, 255, 255, 0.9)';
+        input.style.minWidth = `${Math.max(box.w * scale, 80)}px`;
+        input.style.maxWidth = '300px';
 
         const cleanup = (saveValue = true) => {
-            if (!this.isEditingText) return; // Prevent double cleanup
+            if (!this.isEditingText) return;
             this.isEditingText = false;
             if (saveValue) {
                 cleanupCallback(input.value);
@@ -331,18 +405,17 @@ export class AnnotationView {
              if (document.body.contains(input)) {
                  document.body.removeChild(input);
              }
-             // Restore focus to canvas or body to allow keyboard shortcuts again
              this.DOMElements.canvas.focus();
         };
 
-        input.addEventListener("blur", () => cleanup(true)); // Save on blur
+        input.addEventListener("blur", () => cleanup(true));
         input.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
-                e.preventDefault(); // Prevent potential form submission
-                cleanup(true); // Save on Enter
+                e.preventDefault();
+                cleanup(true);
             }
             if (e.key === "Escape") {
-                 cleanup(false); // Discard changes on Escape
+                 cleanup(false);
             }
         });
 
@@ -351,6 +424,11 @@ export class AnnotationView {
         input.select();
     }
 
+    /**
+     * @description Updates canvas CSS classes and cursor style based on interaction mode.
+     * @param {boolean} isPanning - True if the user is currently panning the canvas.
+     * @param {boolean} isDrawingSelection - True if the user is drawing a selection rectangle.
+     */
     updateCanvasDrawingMode(isPanning, isDrawingSelection) {
         const { canvas } = this.DOMElements;
         canvas.classList.remove("panning", "drawing");
@@ -361,7 +439,6 @@ export class AnnotationView {
              canvas.classList.add("drawing");
              canvas.style.cursor = "crosshair";
         }
-         // <-- FIX: Ensure cursor resets correctly when panning stops -->
          else if (!isPanning && !isDrawingSelection && !window.annotationApp.isDrawingMode && !window.annotationApp.isPenMode && !window.annotationApp.isTextMode) {
             canvas.style.cursor = 'default';
         }
@@ -369,6 +446,12 @@ export class AnnotationView {
 
     // --- Event Binding ---
 
+    /**
+     * @description Binds all necessary DOM event listeners to their handler functions.
+     * This is called once during application initialization.
+     * @param {Object.<string, Function>} handlers - An object where keys are event identifiers
+     * and values are the corresponding handler functions from the ViewModel.
+     */
     bindEventListeners(handlers) {
         const d = this.DOMElements;
 
@@ -419,8 +502,7 @@ export class AnnotationView {
         d.canvas.addEventListener("mouseup", handlers.onCanvasMouseUp);
         d.canvas.addEventListener("dblclick", handlers.onCanvasDoubleClick);
         d.canvas.addEventListener("wheel", handlers.onCanvasWheel, { passive: false });
-        // <-- FIX: Add focus/blur to handle keyboard shortcuts correctly -->
-        d.canvas.setAttribute('tabindex', '0'); // Make canvas focusable
+        d.canvas.setAttribute('tabindex', '0');
         d.canvas.addEventListener('focus', handlers.onCanvasFocus);
         d.canvas.addEventListener('blur', handlers.onCanvasBlur);
 
@@ -447,7 +529,6 @@ export class AnnotationView {
         d.cancelUnloadBtn.addEventListener("click", handlers.onCancelUnload);
         d.unloadConfirmModal.addEventListener("keydown", (e) => {
             if (e.key === 'Escape') handlers.onCancelUnload();
-             // <-- FIX: Allow Enter on focused 'Yes' button -->
             if (e.key === 'Enter' && document.activeElement === d.confirmUnloadBtn) {
                  handlers.onConfirmUnload();
              }
